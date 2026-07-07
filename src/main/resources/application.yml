@@ -1,0 +1,48 @@
+spring:
+  application:
+    name: byz-notifications
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5434/notifications}
+    username: ${DB_USER:db}
+    password: ${DB_PASS:db}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        default_schema: notifications
+  flyway:
+    schemas: notifications
+    default-schema: notifications
+    create-schemas: true
+
+jwt:
+  secret: ${JWT_SECRET:change-me-minimum-32-chars-secret-key!!}
+
+server:
+  port: ${PORT:8081}
+
+observability:
+  url: ${OBSERVABILITY_URL:http://localhost:8084}
+
+registration:
+  url: ${REGISTRATION_URL:http://localhost:8085}
+  instance-id: ${INSTANCE_ID:notifications-1}
+  host: ${HOST:localhost}
+  heartbeat-interval-ms: 30000
+
+spring.mvc.async.request-timeout: -1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  pattern:
+    console: '{"time":"%d{yyyy-MM-dd HH:mm:ss.SSS}","level":"%level","service":"byz-notifications","logger":"%logger{36}","msg":"%msg"}%n'

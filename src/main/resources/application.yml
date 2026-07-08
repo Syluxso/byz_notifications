@@ -17,8 +17,12 @@ spring:
     default-schema: notifications
     create-schemas: true
 
-jwt:
-  secret: ${JWT_SECRET:change-me-minimum-32-chars-secret-key!!}
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${IAM_JWKS_URL:https://iam.byzantineapp.dev/.well-known/jwks.json}
 
 server:
   port: ${PORT:8081}

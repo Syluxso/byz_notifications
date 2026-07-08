@@ -2,7 +2,7 @@ spring:
   application:
     name: byz-notifications
   datasource:
-    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5434/notifications}
+    url: ${DB_URL:jdbc:postgresql://127.0.0.1:5432/notifications}
     username: ${DB_USER:db}
     password: ${DB_PASS:db}
   jpa:
@@ -16,13 +16,14 @@ spring:
     schemas: notifications
     default-schema: notifications
     create-schemas: true
-
-spring:
   security:
     oauth2:
       resourceserver:
         jwt:
           jwk-set-uri: ${IAM_JWKS_URL:https://iam.byzantineapp.dev/.well-known/jwks.json}
+  mvc:
+    async:
+      request-timeout: -1
 
 server:
   port: ${PORT:8081}
@@ -35,8 +36,6 @@ registration:
   instance-id: ${INSTANCE_ID:notifications-1}
   host: ${HOST:localhost}
   heartbeat-interval-ms: 30000
-
-spring.mvc.async.request-timeout: -1
 
 management:
   endpoints:

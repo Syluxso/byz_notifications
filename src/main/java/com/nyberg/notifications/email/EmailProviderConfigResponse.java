@@ -8,6 +8,8 @@ public record EmailProviderConfigResponse(
         UUID organizationId,
         String provider,
         String keyHint,
+        String fromEmail,
+        String fromName,
         boolean active,
         Instant createdAt,
         Instant updatedAt

@@ -28,6 +28,9 @@ spring:
 server:
   port: ${PORT:8081}
 
+encryption:
+  key: ${ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
+
 observability:
   url: ${OBSERVABILITY_URL:http://localhost:8084}
 

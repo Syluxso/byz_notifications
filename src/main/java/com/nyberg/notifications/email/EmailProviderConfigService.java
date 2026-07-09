@@ -23,7 +23,7 @@ public class EmailProviderConfigService {
 
     @Transactional
     public EmailProviderConfigResponse upsert(EmailProviderConfigRequest req) {
-        String encrypted = encrypt(req.apiKey());
+        String encrypted = encrypt(req.credentials());
 
         EmailProviderConfig existing = repo.findByOrganizationId(req.organizationId()).orElse(null);
         if (existing != null) {
@@ -46,9 +46,9 @@ public class EmailProviderConfigService {
         repo.deleteById(id);
     }
 
-    private String encrypt(String apiKey) {
+    private String encrypt(Map<String, String> credentials) {
         try {
-            String json = objectMapper.writeValueAsString(Map.of("apiKey", apiKey));
+            String json = objectMapper.writeValueAsString(credentials);
             return encryption.encrypt(json);
         } catch (Exception e) {
             throw new RuntimeException("Failed to encrypt credentials", e);

@@ -3,6 +3,7 @@ package com.nyberg.notifications.admin;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -30,7 +31,15 @@ public class DbViewerController {
     public Map<String, Object> tableData(
             @PathVariable String table,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "100") int size) {
+            @RequestParam(defaultValue = "100") int size,
+            // notification-specific filters — ignored for other tables
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String channel,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String tenantId,
+            @RequestParam(required = false) String dateFrom,
+            @RequestParam(required = false) String dateTo) {
 
         boolean valid = jdbc.queryForList(
                 "SELECT table_name FROM information_schema.tables " +
@@ -44,15 +53,36 @@ public class DbViewerController {
                 "WHERE table_schema = ? AND table_name = ? ORDER BY ordinal_position",
                 String.class, SCHEMA, table);
 
-        long total = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM " + SCHEMA + "." + table, Long.class);
+        // Build WHERE clause — only applied when viewing the notifications table
+        StringBuilder where = new StringBuilder();
+        List<Object> params = new ArrayList<>();
+
+        if ("notifications".equals(table)) {
+            if (status   != null && !status.isBlank())   { appendAnd(where); where.append("status = ?");                params.add(status.trim()); }
+            if (channel  != null && !channel.isBlank())  { appendAnd(where); where.append("channel = ?");               params.add(channel.trim()); }
+            if (priority != null && !priority.isBlank()) { appendAnd(where); where.append("priority = ?");              params.add(priority.trim()); }
+            if (source   != null && !source.isBlank())   { appendAnd(where); where.append("source ILIKE ?");            params.add("%" + source.trim() + "%"); }
+            if (tenantId != null && !tenantId.isBlank()) { appendAnd(where); where.append("tenant_id = ?::uuid");       params.add(tenantId.trim()); }
+            if (dateFrom != null && !dateFrom.isBlank()) { appendAnd(where); where.append("created_at >= ?::timestamptz"); params.add(dateFrom.trim()); }
+            if (dateTo   != null && !dateTo.isBlank())   { appendAnd(where); where.append("created_at <= ?::timestamptz"); params.add(dateTo.trim()); }
+        }
+
+        String whereClause = where.length() > 0 ? " WHERE " + where : "";
+        String base = SCHEMA + "." + table;
+
+        List<Object> countParams = new ArrayList<>(params);
+        long total = jdbc.queryForObject("SELECT COUNT(*) FROM " + base + whereClause, Long.class, countParams.toArray());
+
+        List<Object> rowParams = new ArrayList<>(params);
+        rowParams.add(size);
+        rowParams.add((long) page * size);
 
         List<List<String>> rows = jdbc.query(
-                "SELECT * FROM " + SCHEMA + "." + table + " LIMIT ? OFFSET ?",
+                "SELECT * FROM " + base + whereClause + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
                 rs -> {
-                    List<List<String>> result = new java.util.ArrayList<>();
+                    List<List<String>> result = new ArrayList<>();
                     while (rs.next()) {
-                        List<String> row = new java.util.ArrayList<>();
+                        List<String> row = new ArrayList<>();
                         for (int i = 1; i <= columns.size(); i++) {
                             Object val = rs.getObject(i);
                             row.add(val == null ? null : val.toString());
@@ -61,7 +91,7 @@ public class DbViewerController {
                     }
                     return result;
                 },
-                size, (long) page * size);
+                rowParams.toArray());
 
         return Map.of(
                 "columns", columns,
@@ -69,5 +99,9 @@ public class DbViewerController {
                 "total", total,
                 "page", page,
                 "size", size);
+    }
+
+    private void appendAnd(StringBuilder sb) {
+        if (sb.length() > 0) sb.append(" AND ");
     }
 }

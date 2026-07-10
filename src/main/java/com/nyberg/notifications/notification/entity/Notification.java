@@ -26,7 +26,7 @@ public class Notification {
     @Column(name = "tenant_id")
     private UUID tenantId;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id")
     private UUID userId;
 
     @Column(name = "channel", nullable = false, length = 50)
@@ -36,6 +36,10 @@ public class Notification {
     @Column(name = "status", nullable = false, length = 30)
     @Builder.Default
     private String status = "unread";
+
+    @Column(name = "delivery_mode", nullable = false, length = 20)
+    @Builder.Default
+    private String deliveryMode = "queued";
 
     @Column(name = "title", nullable = false)
     private String title;

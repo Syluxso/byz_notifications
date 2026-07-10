@@ -13,19 +13,19 @@ public class EmailSendController {
     private final EmailSendService sendService;
 
     @PostMapping("/send")
-    public ResponseEntity<EmailSendResponse> send(@RequestBody EmailSendRequest request) {
+    public ResponseEntity<EmailSendResult> send(@RequestBody EmailSendRequest request) {
         try {
-            sendService.send(request);
-            return ResponseEntity.ok(new EmailSendResponse(true, "Email sent successfully"));
+            EmailSendResult result = sendService.send(request);
+            return ResponseEntity.ok(result);
         } catch (IllegalStateException e) {
             return ResponseEntity.badRequest()
-                .body(new EmailSendResponse(false, e.getMessage()));
+                .body(new EmailSendResult(false, e.getMessage(), null));
         } catch (HttpClientErrorException e) {
             return ResponseEntity.status(e.getStatusCode())
-                .body(new EmailSendResponse(false, "Provider error: " + e.getResponseBodyAsString()));
+                .body(new EmailSendResult(false, "Provider error: " + e.getResponseBodyAsString(), null));
         } catch (Exception e) {
             return ResponseEntity.internalServerError()
-                .body(new EmailSendResponse(false, "Send failed: " + e.getMessage()));
+                .body(new EmailSendResult(false, "Send failed: " + e.getMessage(), null));
         }
     }
 }

@@ -8,6 +8,7 @@ import com.nyberg.notifications.notification.dto.UnreadCountResponse;
 import com.nyberg.notifications.notification.entity.Notification;
 import com.nyberg.notifications.notification.repository.NotificationRepository;
 import com.nyberg.notifications.observability.LogClient;
+import com.nyberg.notifications.tenant.OrganizationContext;
 import com.nyberg.notifications.tenant.TenantContext;
 import io.micrometer.core.instrument.MeterRegistry;
 import lombok.RequiredArgsConstructor;
@@ -36,10 +37,14 @@ public class NotificationService {
 
     @Transactional
     public NotificationResponse createInApp(InAppNotificationRequest req) {
+        UUID orgId = req.organizationId() != null ? req.organizationId() : OrganizationContext.get();
+        if (orgId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Organization ID required — not in request or JWT");
+        }
         UUID tenantId = TenantContext.get();
 
         Notification n = Notification.builder()
-                .organizationId(req.organizationId())
+                .organizationId(orgId)
                 .tenantId(tenantId)
                 .userId(req.userId())
                 .title(req.title())

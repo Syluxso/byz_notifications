@@ -41,6 +41,7 @@ public class TenantFilter implements Filter {
             chain.doFilter(req, res);
         } finally {
             TenantContext.clear();
+            OrganizationContext.clear();
         }
     }
 }

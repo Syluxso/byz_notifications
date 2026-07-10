@@ -3,6 +3,8 @@ package com.nyberg.notifications.email;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.nyberg.notifications.notification.entity.Notification;
 import com.nyberg.notifications.notification.repository.NotificationRepository;
+import com.nyberg.notifications.tenant.OrganizationContext;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -20,9 +22,14 @@ public class EmailSendService {
     private final List<EmailProvider> providers;
 
     public EmailSendResult send(EmailSendRequest request) {
-        EmailProviderConfig cfg = configRepo.findByOrganizationId(request.organizationId())
+        UUID orgId = request.organizationId() != null ? request.organizationId() : OrganizationContext.get();
+        if (orgId == null) {
+            throw new IllegalStateException("Organization ID required — not in request or JWT");
+        }
+
+        EmailProviderConfig cfg = configRepo.findByOrganizationId(orgId)
             .orElseThrow(() -> new IllegalStateException(
-                "No email config found for organization " + request.organizationId()));
+                "No email config found for organization " + orgId));
 
         if (!cfg.isActive()) {
             throw new IllegalStateException("Email config for this organization is inactive");
@@ -36,7 +43,7 @@ public class EmailSendService {
 
         // Create the notification record as queued/direct
         Notification notification = Notification.builder()
-            .organizationId(request.organizationId())
+            .organizationId(orgId)
             .userId(request.userId())
             .tenantId(request.tenantId())
             .channel("email")

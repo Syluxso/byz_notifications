@@ -36,6 +36,7 @@ public class EmailSendService {
 
         // Create the notification record as queued/direct
         Notification notification = Notification.builder()
+            .organizationId(request.organizationId())
             .userId(request.userId())
             .tenantId(request.tenantId())
             .channel("email")

@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public record InAppNotificationRequest(
+        @NotNull UUID organizationId,
         @NotNull UUID userId,
         @NotBlank String title,
         @NotBlank String message,

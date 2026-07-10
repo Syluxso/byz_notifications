@@ -23,6 +23,9 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Column(name = "organization_id", nullable = false)
+    private UUID organizationId;
+
     @Column(name = "tenant_id")
     private UUID tenantId;
 
@@ -39,7 +42,7 @@ public class Notification {
 
     @Column(name = "delivery_mode", nullable = false, length = 20)
     @Builder.Default
-    private String deliveryMode = "queued";
+    private String deliveryMode = "direct";
 
     @Column(name = "title", nullable = false)
     private String title;

@@ -39,6 +39,7 @@ public class NotificationService {
         UUID tenantId = TenantContext.get();
 
         Notification n = Notification.builder()
+                .organizationId(req.organizationId())
                 .tenantId(tenantId)
                 .userId(req.userId())
                 .title(req.title())

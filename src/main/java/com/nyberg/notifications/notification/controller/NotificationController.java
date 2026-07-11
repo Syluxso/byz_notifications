@@ -17,7 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/notifications")
+@RequestMapping({"/api/v1/notifications", "/api/notifications"}) // /api/notifications = deprecated alias
 @RequiredArgsConstructor
 public class NotificationController {
 

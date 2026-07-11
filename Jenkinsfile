@@ -42,7 +42,9 @@ pipeline {
                         sudo chown root:root ${DEPLOY_DIR}/${JAR_NAME}
                         sudo supervisorctl reread
                         sudo supervisorctl update notifications || true
-                        sudo supervisorctl start notifications || sudo supervisorctl restart notifications
+                        # Always restart — `start` no-ops when already running and leaves the old JVM up
+                        sudo supervisorctl restart notifications
+                        sleep 5
                     """
                 }
             }

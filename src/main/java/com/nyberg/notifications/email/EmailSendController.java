@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 
 @RestController
-@RequestMapping("/api/v1/admin/email")
+@RequestMapping({"/api/v1/email", "/api/v1/admin/email"}) // /api/v1/admin/email = deprecated alias
 @RequiredArgsConstructor
 public class EmailSendController {
 

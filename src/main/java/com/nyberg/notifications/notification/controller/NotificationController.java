@@ -5,6 +5,7 @@ import com.nyberg.notifications.notification.dto.NotificationResponse;
 import com.nyberg.notifications.notification.dto.UnreadCountResponse;
 import com.nyberg.notifications.notification.service.NotificationService;
 import com.nyberg.notifications.notification.service.SseService;
+import com.nyberg.notifications.notification.support.RecipientResolver;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -23,6 +24,7 @@ public class NotificationController {
 
     private final NotificationService notificationService;
     private final SseService sseService;
+    private final RecipientResolver recipientResolver;
 
     @PostMapping("/in-app")
     @ResponseStatus(HttpStatus.CREATED)
@@ -33,42 +35,61 @@ public class NotificationController {
     @GetMapping
     public Page<NotificationResponse> list(
             Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId,
             @RequestParam(required = false) String status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return notificationService.list(userId, status, page, size);
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        return notificationService.list(recipient, status, page, size);
     }
 
     @GetMapping("/unread-count")
-    public UnreadCountResponse unreadCount(Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return notificationService.unreadCount(userId);
+    public UnreadCountResponse unreadCount(
+            Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId) {
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        return notificationService.unreadCount(recipient);
     }
 
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return sseService.subscribe(userId);
+    public SseEmitter stream(
+            Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId) {
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        return sseService.subscribe(recipient);
     }
 
     @PatchMapping("/{id}/read")
-    public NotificationResponse markRead(@PathVariable UUID id, Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        return notificationService.markRead(id, userId);
+    public NotificationResponse markRead(
+            @PathVariable UUID id,
+            Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId) {
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        return notificationService.markRead(id, recipient);
     }
 
     @PostMapping("/mark-all-read")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void markAllRead(Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        notificationService.markAllRead(userId);
+    public void markAllRead(
+            Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId) {
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        notificationService.markAllRead(recipient);
     }
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void delete(@PathVariable UUID id, Authentication auth) {
-        UUID userId = (UUID) auth.getPrincipal();
-        notificationService.softDelete(id, userId);
+    public void delete(
+            @PathVariable UUID id,
+            Authentication auth,
+            @RequestHeader(value = RecipientResolver.RECIPIENT_HEADER, required = false) String recipientHeader,
+            @RequestParam(required = false) UUID userId) {
+        UUID recipient = recipientResolver.requireRecipient(auth, recipientHeader, userId);
+        notificationService.softDelete(id, recipient);
     }
 }

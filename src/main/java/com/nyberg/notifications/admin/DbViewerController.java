@@ -37,6 +37,7 @@ public class DbViewerController {
             @RequestParam(required = false) String channel,
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String source,
+            @RequestParam(required = false) String organizationId,
             @RequestParam(required = false) String tenantId,
             @RequestParam(required = false) String dateFrom,
             @RequestParam(required = false) String dateTo) {
@@ -62,6 +63,11 @@ public class DbViewerController {
             if (channel  != null && !channel.isBlank())  { appendAnd(where); where.append("channel = ?");               params.add(channel.trim()); }
             if (priority != null && !priority.isBlank()) { appendAnd(where); where.append("priority = ?");              params.add(priority.trim()); }
             if (source   != null && !source.isBlank())   { appendAnd(where); where.append("source ILIKE ?");            params.add("%" + source.trim() + "%"); }
+            if (organizationId != null && !organizationId.isBlank()) {
+                appendAnd(where);
+                where.append("organization_id = ?::uuid");
+                params.add(organizationId.trim());
+            }
             if (tenantId != null && !tenantId.isBlank()) { appendAnd(where); where.append("tenant_id = ?::uuid");       params.add(tenantId.trim()); }
             if (dateFrom != null && !dateFrom.isBlank()) { appendAnd(where); where.append("created_at >= ?::timestamptz"); params.add(dateFrom.trim()); }
             if (dateTo   != null && !dateTo.isBlank())   { appendAnd(where); where.append("created_at <= ?::timestamptz"); params.add(dateTo.trim()); }

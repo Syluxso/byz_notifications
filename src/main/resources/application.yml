@@ -21,12 +21,31 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${IAM_JWKS_URL:https://iam.byzantineapp.dev/.well-known/jwks.json}
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    consumer:
+      group-id: notifications
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      enable-auto-commit: false
+    listener:
+      ack-mode: record
+      auto-startup: ${BYZ_KAFKA_ENABLED:true}
+    admin:
+      fail-fast: false
   mvc:
     async:
       request-timeout: -1
 
 server:
   port: ${PORT:8081}
+
+byz:
+  kafka:
+    enabled: ${BYZ_KAFKA_ENABLED:true}
+    topics:
+      iam-user: byz.iam.user
 
 encryption:
   key: ${ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}

@@ -74,7 +74,8 @@ public class DbViewerController {
         }
 
         String whereClause = where.length() > 0 ? " WHERE " + where : "";
-        String base = SCHEMA + "." + table;
+        String base = SCHEMA + "." + quoteIdent(table);
+        String orderBy = resolveOrderBy(columns);
 
         List<Object> countParams = new ArrayList<>(params);
         long total = jdbc.queryForObject("SELECT COUNT(*) FROM " + base + whereClause, Long.class, countParams.toArray());
@@ -84,7 +85,7 @@ public class DbViewerController {
         rowParams.add((long) page * size);
 
         List<List<String>> rows = jdbc.query(
-                "SELECT * FROM " + base + whereClause + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                "SELECT * FROM " + base + whereClause + orderBy + " LIMIT ? OFFSET ?",
                 rs -> {
                     List<List<String>> result = new ArrayList<>();
                     while (rs.next()) {
@@ -105,6 +106,28 @@ public class DbViewerController {
                 "total", total,
                 "page", page,
                 "size", size);
+    }
+
+    /**
+     * Tables like processed_events / flyway_schema_history have no created_at.
+     * Pick a stable DESC key from columns that actually exist.
+     */
+    private static String resolveOrderBy(List<String> columns) {
+        for (String candidate : List.of(
+                "created_at", "updated_at", "processed_at", "installed_on",
+                "installed_rank", "event_id", "id")) {
+            if (columns.stream().anyMatch(c -> c.equalsIgnoreCase(candidate))) {
+                return " ORDER BY " + quoteIdent(candidate) + " DESC";
+            }
+        }
+        return "";
+    }
+
+    private static String quoteIdent(String ident) {
+        if (ident == null || !ident.matches("[A-Za-z_][A-Za-z0-9_]*")) {
+            throw new IllegalArgumentException("Invalid identifier");
+        }
+        return "\"" + ident + "\"";
     }
 
     private void appendAnd(StringBuilder sb) {

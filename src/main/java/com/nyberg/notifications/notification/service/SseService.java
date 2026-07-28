@@ -10,6 +10,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -22,7 +23,9 @@ public class SseService {
     private final Map<UUID, List<SseEmitter>> emitters = new ConcurrentHashMap<>();
 
     public SseEmitter subscribe(UUID userId) {
-        SseEmitter emitter = new SseEmitter(Long.MAX_VALUE);
+        // Finite timeout so abandoned browser tabs (and gateway proxies) don't
+        // hold emitters forever and stall createInApp fan-out.
+        SseEmitter emitter = new SseEmitter(30 * 60 * 1000L);
         emitters.computeIfAbsent(userId, k -> new CopyOnWriteArrayList<>()).add(emitter);
         emitter.onCompletion(() -> remove(userId, emitter));
         emitter.onTimeout(() -> remove(userId, emitter));
@@ -33,7 +36,16 @@ public class SseService {
         return emitter;
     }
 
+    /**
+     * Fan-out must not block {@code POST /in-app}. A stuck SSE client (common when
+     * the stream was opened through the gateway) can otherwise stall the create
+     * response until an upstream proxy closes the connection (curl 18).
+     */
     public void send(UUID userId, Object payload) {
+        CompletableFuture.runAsync(() -> sendSync(userId, payload));
+    }
+
+    private void sendSync(UUID userId, Object payload) {
         List<SseEmitter> userEmitters = emitters.get(userId);
         if (userEmitters == null || userEmitters.isEmpty()) return;
 

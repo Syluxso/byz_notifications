@@ -18,6 +18,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -58,11 +60,25 @@ public class NotificationService {
         repository.save(n);
 
         long unread = repository.countByUserIdAndStatus(req.userId(), "unread");
-        sseService.send(req.userId(), Map.of(
+        NotificationResponse response = NotificationResponse.from(n);
+        // After commit + async fan-out: never stall the HTTP 201 on a stuck SSE client
+        // (especially when the stream was opened through the gateway).
+        final UUID recipient = req.userId();
+        Runnable fanOut = () -> sseService.send(recipient, Map.of(
                 "type", "new_notification",
-                "notification", NotificationResponse.from(n),
+                "notification", response,
                 "unreadCount", unread
         ));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    fanOut.run();
+                }
+            });
+        } else {
+            fanOut.run();
+        }
 
         meterRegistry.counter("notifications.created", "channel", "in_app",
                 "tenant", tenantId != null ? tenantId.toString() : "system").increment();
@@ -73,7 +89,7 @@ public class NotificationService {
                 req.userId().toString(), null,
                 java.util.Map.of("title", req.title(), "source", req.source() != null ? req.source() : ""));
 
-        return NotificationResponse.from(n);
+        return response;
     }
 
     @Transactional(readOnly = true)

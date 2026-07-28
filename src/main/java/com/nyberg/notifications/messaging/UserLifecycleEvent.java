@@ -14,7 +14,10 @@ public record UserLifecycleEvent(
         UUID tenantId,
         UUID userId,
         String email,
-        String displayName
+        String displayName,
+        /** Present for {@link #TYPE_PASSWORD_RESET_REQUESTED}; null otherwise. */
+        String resetUrl
 ) {
     public static final String TYPE_USER_REGISTERED = "user.registered";
+    public static final String TYPE_PASSWORD_RESET_REQUESTED = "user.password_reset_requested";
 }

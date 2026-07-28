@@ -36,6 +36,8 @@ public class UserLifecycleEventHandler {
 
         if (UserLifecycleEvent.TYPE_USER_REGISTERED.equals(event.type())) {
             handleUserRegistered(event);
+        } else if (UserLifecycleEvent.TYPE_PASSWORD_RESET_REQUESTED.equals(event.type())) {
+            handlePasswordResetRequested(event);
         } else {
             log.info("Ignoring unknown user lifecycle type={} eventId={}", event.type(), event.eventId());
         }
@@ -77,6 +79,42 @@ public class UserLifecycleEventHandler {
         }
 
         sendWelcomeEmailBestEffort(event, display);
+    }
+
+    private void handlePasswordResetRequested(UserLifecycleEvent event) {
+        if (event.userId() == null || event.organizationId() == null) {
+            throw new IllegalArgumentException("user.password_reset_requested requires userId and organizationId");
+        }
+        if (event.email() == null || event.email().isBlank() || event.resetUrl() == null || event.resetUrl().isBlank()) {
+            log.warn("Password reset email skipped — missing email or resetUrl eventId={}", event.eventId());
+            return;
+        }
+
+        String display = (event.displayName() != null && !event.displayName().isBlank())
+                ? event.displayName().trim()
+                : "there";
+        String safeUrl = escapeHtml(event.resetUrl());
+
+        try {
+            emailSendService.send(new EmailSendRequest(
+                    event.organizationId(),
+                    event.email(),
+                    display,
+                    "Reset your password",
+                    "<p>Hi " + escapeHtml(display) + ",</p>"
+                            + "<p>We received a request to reset your Byzantine password.</p>"
+                            + "<p><a href=\"" + safeUrl + "\">Reset password</a></p>"
+                            + "<p>This link expires in one hour. If you did not request a reset, you can ignore this email.</p>"
+                            + "<p style=\"color:#888;font-size:12px;word-break:break-all;\">" + safeUrl + "</p>",
+                    event.userId(),
+                    event.tenantId(),
+                    "byz.iam.password-reset",
+                    "normal"
+            ));
+        } catch (Exception e) {
+            log.warn("Password reset email skipped for userId={} eventId={}: {}",
+                    event.userId(), event.eventId(), e.toString());
+        }
     }
 
     private void sendWelcomeEmailBestEffort(UserLifecycleEvent event, String display) {

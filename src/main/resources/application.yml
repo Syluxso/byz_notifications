@@ -46,6 +46,7 @@ byz:
     enabled: ${BYZ_KAFKA_ENABLED:true}
     topics:
       iam-user: byz.iam.user
+      notification-intent: byz.notifications.intent
 
 encryption:
   key: ${ENCRYPTION_KEY:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}

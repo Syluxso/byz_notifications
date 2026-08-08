@@ -38,6 +38,10 @@ public class UserLifecycleEventHandler {
             handleUserRegistered(event);
         } else if (UserLifecycleEvent.TYPE_PASSWORD_RESET_REQUESTED.equals(event.type())) {
             handlePasswordResetRequested(event);
+        } else if (UserLifecycleEvent.TYPE_DEVICE_REGISTERED.equals(event.type())) {
+            handleDeviceRegistered(event);
+        } else if (UserLifecycleEvent.TYPE_DEVICE_REVOKED.equals(event.type())) {
+            handleDeviceRevoked(event);
         } else {
             log.info("Ignoring unknown user lifecycle type={} eventId={}", event.type(), event.eventId());
         }
@@ -57,15 +61,16 @@ public class UserLifecycleEventHandler {
                 ? event.displayName().trim()
                 : "there";
 
+        // In-app welcome (always attempted).
         OrganizationContext.set(event.organizationId());
         TenantContext.set(event.tenantId());
         try {
             notificationService.createInApp(new InAppNotificationRequest(
                     event.organizationId(),
                     event.userId(),
-                    "Welcome",
-                    "Welcome, " + display + "! Your account is ready.",
-                    null,
+                    "Welcome to Byzantine",
+                    "Welcome, " + display + "! Your account is ready. Explore the platform and complete your profile when you can.",
+                    "/app/me",
                     Map.of(
                             "eventId", event.eventId().toString(),
                             "type", event.type()
@@ -73,12 +78,189 @@ public class UserLifecycleEventHandler {
                     "normal",
                     "byz.iam.user"
             ));
+            log.info("In-app welcome created userId={} orgId={}", event.userId(), event.organizationId());
+        } catch (Exception e) {
+            log.warn("In-app welcome failed userId={} eventId={}: {}",
+                    event.userId(), event.eventId(), e.toString());
         } finally {
             OrganizationContext.clear();
             TenantContext.clear();
         }
 
+        // Email welcome (needs org email provider in Admin, e.g. SendGrid).
         sendWelcomeEmailBestEffort(event, display);
+    }
+
+    private void handleDeviceRegistered(UserLifecycleEvent event) {
+        if (event.userId() == null || event.organizationId() == null) {
+            throw new IllegalArgumentException("device.registered requires userId and organizationId");
+        }
+
+        String label = (event.deviceLabel() != null && !event.deviceLabel().isBlank())
+                ? event.deviceLabel().trim()
+                : "A new device";
+        String ipPart = (event.deviceIp() != null && !event.deviceIp().isBlank())
+                ? " (IP " + event.deviceIp().trim() + ")"
+                : "";
+        String body = label + " was added to your account" + ipPart
+                + ". If this wasn't you, review and revoke it under Security → Devices.";
+
+        OrganizationContext.set(event.organizationId());
+        TenantContext.set(event.tenantId());
+        try {
+            notificationService.createInApp(new InAppNotificationRequest(
+                    event.organizationId(),
+                    event.userId(),
+                    "New device signed in",
+                    body,
+                    "/app/security/devices",
+                    Map.of(
+                            "eventId", event.eventId().toString(),
+                            "type", event.type(),
+                            "deviceId", event.deviceId() != null ? event.deviceId().toString() : ""
+                    ),
+                    "high",
+                    "byz.iam.device"
+            ));
+            log.info("In-app new-device notice created userId={} deviceId={}",
+                    event.userId(), event.deviceId());
+        } catch (Exception e) {
+            log.warn("In-app new-device notice failed userId={} eventId={}: {}",
+                    event.userId(), event.eventId(), e.toString());
+        } finally {
+            OrganizationContext.clear();
+            TenantContext.clear();
+        }
+
+        sendNewDeviceEmailBestEffort(event, label);
+    }
+
+    private void sendNewDeviceEmailBestEffort(UserLifecycleEvent event, String label) {
+        if (event.email() == null || event.email().isBlank()) {
+            log.warn("New-device email skipped — no email on eventId={}", event.eventId());
+            return;
+        }
+        String display = (event.displayName() != null && !event.displayName().isBlank())
+                ? event.displayName().trim()
+                : "there";
+        String safeLabel = escapeHtml(label);
+        String safeIp = (event.deviceIp() != null && !event.deviceIp().isBlank())
+                ? escapeHtml(event.deviceIp().trim())
+                : null;
+        String html = ""
+                + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
+                + "<p>Hi " + escapeHtml(display) + ",</p>"
+                + "<p>A new device signed in to your <strong>Byzantine</strong> account.</p>"
+                + "<p><strong>" + safeLabel + "</strong>"
+                + (safeIp != null ? "<br/>IP: " + safeIp : "")
+                + "</p>"
+                + "<p>If this was you, you can ignore this message. If not, sign in and revoke the device under "
+                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>"
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + "</div>";
+        try {
+            emailSendService.send(new EmailSendRequest(
+                    event.organizationId(),
+                    event.email(),
+                    display,
+                    "New device signed in to your account",
+                    html,
+                    event.userId(),
+                    event.tenantId(),
+                    "byz.iam.device",
+                    "high"
+            ));
+            log.info("New-device email sent userId={} to={}", event.userId(), event.email());
+        } catch (Exception e) {
+            log.warn("New-device email skipped for userId={} eventId={} (configure org SendGrid in Admin): {}",
+                    event.userId(), event.eventId(), e.toString());
+        }
+    }
+
+    private void handleDeviceRevoked(UserLifecycleEvent event) {
+        if (event.userId() == null || event.organizationId() == null) {
+            throw new IllegalArgumentException("device.revoked requires userId and organizationId");
+        }
+
+        String label = (event.deviceLabel() != null && !event.deviceLabel().isBlank())
+                ? event.deviceLabel().trim()
+                : "A device";
+        String ipPart = (event.deviceIp() != null && !event.deviceIp().isBlank())
+                ? " (IP " + event.deviceIp().trim() + ")"
+                : "";
+        String body = label + " was revoked and signed out" + ipPart
+                + ". If you did not do this, review your remaining devices under Security → Devices.";
+
+        OrganizationContext.set(event.organizationId());
+        TenantContext.set(event.tenantId());
+        try {
+            notificationService.createInApp(new InAppNotificationRequest(
+                    event.organizationId(),
+                    event.userId(),
+                    "Device revoked",
+                    body,
+                    "/app/security/devices",
+                    Map.of(
+                            "eventId", event.eventId().toString(),
+                            "type", event.type(),
+                            "deviceId", event.deviceId() != null ? event.deviceId().toString() : ""
+                    ),
+                    "high",
+                    "byz.iam.device"
+            ));
+            log.info("In-app device-revoked notice created userId={} deviceId={}",
+                    event.userId(), event.deviceId());
+        } catch (Exception e) {
+            log.warn("In-app device-revoked notice failed userId={} eventId={}: {}",
+                    event.userId(), event.eventId(), e.toString());
+        } finally {
+            OrganizationContext.clear();
+            TenantContext.clear();
+        }
+
+        sendDeviceRevokedEmailBestEffort(event, label);
+    }
+
+    private void sendDeviceRevokedEmailBestEffort(UserLifecycleEvent event, String label) {
+        if (event.email() == null || event.email().isBlank()) {
+            log.warn("Device-revoked email skipped — no email on eventId={}", event.eventId());
+            return;
+        }
+        String display = (event.displayName() != null && !event.displayName().isBlank())
+                ? event.displayName().trim()
+                : "there";
+        String safeLabel = escapeHtml(label);
+        String safeIp = (event.deviceIp() != null && !event.deviceIp().isBlank())
+                ? escapeHtml(event.deviceIp().trim())
+                : null;
+        String html = ""
+                + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
+                + "<p>Hi " + escapeHtml(display) + ",</p>"
+                + "<p>A device was revoked on your <strong>Byzantine</strong> account and signed out.</p>"
+                + "<p><strong>" + safeLabel + "</strong>"
+                + (safeIp != null ? "<br/>IP: " + safeIp : "")
+                + "</p>"
+                + "<p>If you did this, no further action is needed. If not, sign in and review your devices under "
+                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>"
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + "</div>";
+        try {
+            emailSendService.send(new EmailSendRequest(
+                    event.organizationId(),
+                    event.email(),
+                    display,
+                    "A device was revoked on your account",
+                    html,
+                    event.userId(),
+                    event.tenantId(),
+                    "byz.iam.device",
+                    "high"
+            ));
+            log.info("Device-revoked email sent userId={} to={}", event.userId(), event.email());
+        } catch (Exception e) {
+            log.warn("Device-revoked email skipped for userId={} eventId={} (configure org SendGrid in Admin): {}",
+                    event.userId(), event.eventId(), e.toString());
+        }
     }
 
     private void handlePasswordResetRequested(UserLifecycleEvent event) {
@@ -119,22 +301,32 @@ public class UserLifecycleEventHandler {
 
     private void sendWelcomeEmailBestEffort(UserLifecycleEvent event, String display) {
         if (event.email() == null || event.email().isBlank()) {
+            log.warn("Welcome email skipped — no email on eventId={}", event.eventId());
             return;
         }
+        String safeName = escapeHtml(display);
+        String html = ""
+                + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
+                + "<p>Hi " + safeName + ",</p>"
+                + "<p>Welcome to <strong>Byzantine</strong>. Your account is ready.</p>"
+                + "<p>Sign in anytime to access your workspace and stay on top of what matters.</p>"
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + "</div>";
         try {
             emailSendService.send(new EmailSendRequest(
                     event.organizationId(),
                     event.email(),
                     display,
-                    "Welcome",
-                    "<p>Welcome, " + escapeHtml(display) + "!</p><p>Your account is ready.</p>",
+                    "Welcome to Byzantine",
+                    html,
                     event.userId(),
                     event.tenantId(),
-                    "byz.iam.user",
+                    "byz.iam.welcome",
                     "normal"
             ));
+            log.info("Welcome email sent userId={} to={}", event.userId(), event.email());
         } catch (Exception e) {
-            log.warn("Welcome email skipped for userId={} eventId={}: {}",
+            log.warn("Welcome email skipped for userId={} eventId={} (configure org SendGrid in Admin): {}",
                     event.userId(), event.eventId(), e.toString());
         }
     }

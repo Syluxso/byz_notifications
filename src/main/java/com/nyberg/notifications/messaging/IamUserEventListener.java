@@ -23,9 +23,13 @@ public class IamUserEventListener {
     public void onMessage(String payload) {
         try {
             UserLifecycleEvent event = objectMapper.readValue(payload, UserLifecycleEvent.class);
+            log.info("Received byz.iam.user type={} eventId={} userId={}",
+                    event.type(), event.eventId(), event.userId());
             handler.handle(event);
         } catch (Exception e) {
-            log.error("Failed to process byz.iam.user message: {}", e.toString());
+            log.error("Failed to process byz.iam.user message: {} payloadSnippet={}",
+                    e.toString(),
+                    payload != null && payload.length() > 400 ? payload.substring(0, 400) + "…" : payload);
             throw new IllegalStateException("Failed to process byz.iam.user message", e);
         }
     }

@@ -17,6 +17,9 @@ public class EmailProviderConfigService {
     private final CredentialEncryptionService encryption;
     private final ObjectMapper objectMapper;
 
+    /** Credentials key for the org's product name in platform emails. */
+    public static final String BRAND_NAME = "brandName";
+
     public List<EmailProviderConfigResponse> listAll() {
         return repo.findAll().stream().map(this::toResponse).toList();
     }
@@ -27,10 +30,17 @@ public class EmailProviderConfigService {
 
         Map<String, String> merged = new java.util.HashMap<>(req.credentials());
 
-        // If apiKey is absent or blank, preserve the existing one
-        if ((merged.get("apiKey") == null || merged.get("apiKey").isBlank()) && existing != null) {
+        // If apiKey is absent or blank, preserve the existing one. brandName is
+        // kept when the request leaves it out entirely (an admin UI that does
+        // not know the field must not wipe it); sending "" clears it.
+        if (existing != null) {
             Map<String, String> stored = decryptCredentials(existing.getCredentialsEncrypted());
-            merged.put("apiKey", stored.get("apiKey"));
+            if (merged.get("apiKey") == null || merged.get("apiKey").isBlank()) {
+                merged.put("apiKey", stored.get("apiKey"));
+            }
+            if (!merged.containsKey(BRAND_NAME) && stored.get(BRAND_NAME) != null) {
+                merged.put(BRAND_NAME, stored.get(BRAND_NAME));
+            }
         }
 
         String encrypted = encrypt(merged);
@@ -48,6 +58,19 @@ public class EmailProviderConfigService {
                 .credentialsEncrypted(encrypted)
                 .build();
         return toResponse(repo.save(cfg));
+    }
+
+    /**
+     * The org's product name for platform emails ("brandName" in the provider
+     * credentials), or null when it has none and emails say "Byzantine".
+     */
+    public String brandName(UUID organizationId) {
+        if (organizationId == null) return null;
+        return repo.findByOrganizationId(organizationId)
+                .map(cfg -> decryptCredentials(cfg.getCredentialsEncrypted()).get(BRAND_NAME))
+                .map(String::trim)
+                .filter(b -> !b.isEmpty())
+                .orElse(null);
     }
 
     @Transactional
@@ -75,6 +98,7 @@ public class EmailProviderConfigService {
                 hint,
                 creds.getOrDefault("fromEmail", ""),
                 creds.getOrDefault("fromName", ""),
+                creds.getOrDefault(BRAND_NAME, ""),
                 cfg.isActive(),
                 cfg.getCreatedAt(),
                 cfg.getUpdatedAt()

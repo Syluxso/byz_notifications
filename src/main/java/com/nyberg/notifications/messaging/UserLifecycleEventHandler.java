@@ -1,5 +1,6 @@
 package com.nyberg.notifications.messaging;
 
+import com.nyberg.notifications.email.EmailProviderConfigService;
 import com.nyberg.notifications.email.EmailSendRequest;
 import com.nyberg.notifications.email.EmailSendService;
 import com.nyberg.notifications.notification.dto.InAppNotificationRequest;
@@ -21,6 +22,28 @@ public class UserLifecycleEventHandler {
     private final ProcessedEventRepository processedEventRepository;
     private final NotificationService notificationService;
     private final EmailSendService emailSendService;
+    private final EmailProviderConfigService emailProviderConfigService;
+
+    /**
+     * Who the emails speak for. custom is true when the org set a brandName
+     * (e.g. "Claritas Classical Community"); then byz-front paths such as
+     * Security → Devices are left out, since that org's users have their own app.
+     */
+    private record Brand(String name, boolean custom) {
+        String html() {
+            return escapeHtml(name);
+        }
+    }
+
+    private Brand brand(UserLifecycleEvent event) {
+        try {
+            String name = emailProviderConfigService.brandName(event.organizationId());
+            if (name != null) return new Brand(name, true);
+        } catch (Exception e) {
+            log.warn("Brand lookup failed orgId={}: {}", event.organizationId(), e.toString());
+        }
+        return new Brand("Byzantine", false);
+    }
 
     @Transactional
     public void handle(UserLifecycleEvent event) {
@@ -61,6 +84,8 @@ public class UserLifecycleEventHandler {
                 ? event.displayName().trim()
                 : "there";
 
+        Brand brand = brand(event);
+
         // In-app welcome (always attempted).
         OrganizationContext.set(event.organizationId());
         TenantContext.set(event.tenantId());
@@ -68,8 +93,10 @@ public class UserLifecycleEventHandler {
             notificationService.createInApp(new InAppNotificationRequest(
                     event.organizationId(),
                     event.userId(),
-                    "Welcome to Byzantine",
-                    "Welcome, " + display + "! Your account is ready. Explore the platform and complete your profile when you can.",
+                    "Welcome to " + brand.name(),
+                    brand.custom()
+                            ? "Welcome, " + display + "! Your account is ready."
+                            : "Welcome, " + display + "! Your account is ready. Explore the platform and complete your profile when you can.",
                     "/app/me",
                     Map.of(
                             "eventId", event.eventId().toString(),
@@ -88,7 +115,7 @@ public class UserLifecycleEventHandler {
         }
 
         // Email welcome (needs org email provider in Admin, e.g. SendGrid).
-        sendWelcomeEmailBestEffort(event, display);
+        sendWelcomeEmailBestEffort(event, display, brand);
     }
 
     private void handleDeviceRegistered(UserLifecycleEvent event) {
@@ -102,8 +129,11 @@ public class UserLifecycleEventHandler {
         String ipPart = (event.deviceIp() != null && !event.deviceIp().isBlank())
                 ? " (IP " + event.deviceIp().trim() + ")"
                 : "";
+        Brand brand = brand(event);
         String body = label + " was added to your account" + ipPart
-                + ". If this wasn't you, review and revoke it under Security → Devices.";
+                + (brand.custom()
+                ? ". If this wasn't you, change your password."
+                : ". If this wasn't you, review and revoke it under Security → Devices.");
 
         OrganizationContext.set(event.organizationId());
         TenantContext.set(event.tenantId());
@@ -132,10 +162,10 @@ public class UserLifecycleEventHandler {
             TenantContext.clear();
         }
 
-        sendNewDeviceEmailBestEffort(event, label);
+        sendNewDeviceEmailBestEffort(event, label, brand);
     }
 
-    private void sendNewDeviceEmailBestEffort(UserLifecycleEvent event, String label) {
+    private void sendNewDeviceEmailBestEffort(UserLifecycleEvent event, String label, Brand brand) {
         if (event.email() == null || event.email().isBlank()) {
             log.warn("New-device email skipped — no email on eventId={}", event.eventId());
             return;
@@ -150,13 +180,15 @@ public class UserLifecycleEventHandler {
         String html = ""
                 + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
                 + "<p>Hi " + escapeHtml(display) + ",</p>"
-                + "<p>A new device signed in to your <strong>Byzantine</strong> account.</p>"
+                + "<p>A new device signed in to your <strong>" + brand.html() + "</strong> account.</p>"
                 + "<p><strong>" + safeLabel + "</strong>"
                 + (safeIp != null ? "<br/>IP: " + safeIp : "")
                 + "</p>"
-                + "<p>If this was you, you can ignore this message. If not, sign in and revoke the device under "
-                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>"
-                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + (brand.custom()
+                ? "<p>If this was you, you can ignore this message. If not, change your password right away.</p>"
+                : "<p>If this was you, you can ignore this message. If not, sign in and revoke the device under "
+                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>")
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The " + brand.html() + " team</p>"
                 + "</div>";
         try {
             emailSendService.send(new EmailSendRequest(
@@ -188,8 +220,11 @@ public class UserLifecycleEventHandler {
         String ipPart = (event.deviceIp() != null && !event.deviceIp().isBlank())
                 ? " (IP " + event.deviceIp().trim() + ")"
                 : "";
+        Brand brand = brand(event);
         String body = label + " was revoked and signed out" + ipPart
-                + ". If you did not do this, review your remaining devices under Security → Devices.";
+                + (brand.custom()
+                ? ". If you did not do this, change your password."
+                : ". If you did not do this, review your remaining devices under Security → Devices.");
 
         OrganizationContext.set(event.organizationId());
         TenantContext.set(event.tenantId());
@@ -218,10 +253,10 @@ public class UserLifecycleEventHandler {
             TenantContext.clear();
         }
 
-        sendDeviceRevokedEmailBestEffort(event, label);
+        sendDeviceRevokedEmailBestEffort(event, label, brand);
     }
 
-    private void sendDeviceRevokedEmailBestEffort(UserLifecycleEvent event, String label) {
+    private void sendDeviceRevokedEmailBestEffort(UserLifecycleEvent event, String label, Brand brand) {
         if (event.email() == null || event.email().isBlank()) {
             log.warn("Device-revoked email skipped — no email on eventId={}", event.eventId());
             return;
@@ -236,13 +271,15 @@ public class UserLifecycleEventHandler {
         String html = ""
                 + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
                 + "<p>Hi " + escapeHtml(display) + ",</p>"
-                + "<p>A device was revoked on your <strong>Byzantine</strong> account and signed out.</p>"
+                + "<p>A device was revoked on your <strong>" + brand.html() + "</strong> account and signed out.</p>"
                 + "<p><strong>" + safeLabel + "</strong>"
                 + (safeIp != null ? "<br/>IP: " + safeIp : "")
                 + "</p>"
-                + "<p>If you did this, no further action is needed. If not, sign in and review your devices under "
-                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>"
-                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + (brand.custom()
+                ? "<p>If you did this, no further action is needed. If not, change your password right away.</p>"
+                : "<p>If you did this, no further action is needed. If not, sign in and review your devices under "
+                + "<strong>Security → Devices</strong> (path <code>/app/security/devices</code>).</p>")
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The " + brand.html() + " team</p>"
                 + "</div>";
         try {
             emailSendService.send(new EmailSendRequest(
@@ -276,6 +313,7 @@ public class UserLifecycleEventHandler {
                 ? event.displayName().trim()
                 : "there";
         String safeUrl = escapeHtml(event.resetUrl());
+        Brand brand = brand(event);
 
         try {
             emailSendService.send(new EmailSendRequest(
@@ -284,7 +322,7 @@ public class UserLifecycleEventHandler {
                     display,
                     "Reset your password",
                     "<p>Hi " + escapeHtml(display) + ",</p>"
-                            + "<p>We received a request to reset your Byzantine password.</p>"
+                            + "<p>We received a request to reset your " + brand.html() + " password.</p>"
                             + "<p><a href=\"" + safeUrl + "\">Reset password</a></p>"
                             + "<p>This link expires in one hour. If you did not request a reset, you can ignore this email.</p>"
                             + "<p style=\"color:#888;font-size:12px;word-break:break-all;\">" + safeUrl + "</p>",
@@ -299,7 +337,7 @@ public class UserLifecycleEventHandler {
         }
     }
 
-    private void sendWelcomeEmailBestEffort(UserLifecycleEvent event, String display) {
+    private void sendWelcomeEmailBestEffort(UserLifecycleEvent event, String display, Brand brand) {
         if (event.email() == null || event.email().isBlank()) {
             log.warn("Welcome email skipped — no email on eventId={}", event.eventId());
             return;
@@ -308,16 +346,18 @@ public class UserLifecycleEventHandler {
         String html = ""
                 + "<div style=\"font-family:Helvetica,Arial,sans-serif;line-height:1.5;color:#151A20;\">"
                 + "<p>Hi " + safeName + ",</p>"
-                + "<p>Welcome to <strong>Byzantine</strong>. Your account is ready.</p>"
-                + "<p>Sign in anytime to access your workspace and stay on top of what matters.</p>"
-                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The Byzantine team</p>"
+                + "<p>Welcome to <strong>" + brand.html() + "</strong>. Your account is ready.</p>"
+                + (brand.custom()
+                ? "<p>You can sign in anytime.</p>"
+                : "<p>Sign in anytime to access your workspace and stay on top of what matters.</p>")
+                + "<p style=\"margin-top:24px;color:#5C6874;font-size:13px;\">— The " + brand.html() + " team</p>"
                 + "</div>";
         try {
             emailSendService.send(new EmailSendRequest(
                     event.organizationId(),
                     event.email(),
                     display,
-                    "Welcome to Byzantine",
+                    "Welcome to " + brand.name(),
                     html,
                     event.userId(),
                     event.tenantId(),

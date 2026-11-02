@@ -10,6 +10,7 @@ public record EmailProviderConfigResponse(
         String keyHint,
         String fromEmail,
         String fromName,
+        String brandName,
         boolean active,
         Instant createdAt,
         Instant updatedAt
